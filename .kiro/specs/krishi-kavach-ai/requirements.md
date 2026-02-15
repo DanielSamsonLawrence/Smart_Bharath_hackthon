@@ -2,26 +2,31 @@
 
 ## Introduction
 
-Krishi-Kavach AI is an offline-first edge vision and multimodal agentic advisor designed for rural Indian farmers with limited or intermittent connectivity. The system employs a hybrid-compute architecture with two tiers: Tier 1 (Edge/Offline) for instant disease detection using WebAssembly and TensorFlow Lite, and Tier 2 (Cloud/Agentic) for detailed advisory using Gemini 1.5 Flash and Bhashini multilingual support. This enables farmers to receive immediate diagnostic results offline while accessing comprehensive guidance when connectivity is available.
+Krishi-Kavach AI is an offline-first edge vision and multimodal agentic advisor designed for rural Indian farmers with limited or intermittent connectivity. The system employs a hybrid-compute architecture with two tiers: Tier 1 (Edge/Offline) for instant disease detection using WebAssembly and TensorFlow Lite, and Tier 2 (Cloud/Agentic) for detailed advisory using Gemini 1.5 Flash via Amazon Bedrock, AWS Lambda for serverless compute, Amazon S3 for storage, and Bhashini multilingual support. This enables farmers to receive immediate diagnostic results offline while accessing comprehensive guidance when connectivity is available through a fully serverless AWS infrastructure.
 
 ## Glossary
 
 - **System**: The complete Krishi-Kavach AI application
 - **Edge_Module**: The offline WebAssembly-based computer vision component running on device
-- **Agent_Module**: The cloud-based multimodal AI advisor using Gemini 1.5 Flash
+- **Agent_Module**: The cloud-based multimodal AI advisor using AWS Lambda and Amazon Bedrock
 - **Digital_Vaidya**: The offline disease detection feature for livestock and crops
-- **Bhasha_Kisan**: The multilingual AI agent providing agricultural advisory
+- **Bhasha_Kisan**: The multilingual AI agent running on AWS Lambda providing agricultural advisory
 - **Bhashini_Service**: The government multilingual translation service
 - **Detection_Result**: Output from computer vision analysis containing disease/pest identification
-- **Advisory_Response**: Detailed recommendations from the AI agent
+- **Advisory_Response**: Detailed recommendations from the AI agent via Amazon Bedrock
 - **User**: Farmer or agricultural extension worker using the system
 - **Connectivity_State**: Network availability status (offline, 2G, 3G, 4G, etc.)
 - **Wasm_Runtime**: WebAssembly execution environment in the browser/app
-- **TFLite_Model**: TensorFlow Lite model for edge inference
+- **TFLite_Model**: TensorFlow Lite model for edge inference, served from Amazon S3
 - **Lumpy_Skin_Disease**: Viral disease affecting cattle and buffalo
 - **Pest_Detection**: Identification of crop-damaging insects and diseases
 - **Sub_Dialect**: Regional language variation specific to user's locality
 - **Multimodal_Input**: Image, video, or voice input from user
+- **AWS_Lambda**: Serverless compute service running the Bhasha-Kisan agent
+- **Amazon_Bedrock**: AWS service providing access to Gemini 1.5 Flash model
+- **Amazon_S3**: Object storage service for images, videos, and models
+- **Amazon_DynamoDB**: NoSQL database for session and user data management
+- **Amazon_API_Gateway**: API management service for REST endpoints
 
 ## Requirements
 
@@ -71,8 +76,8 @@ Krishi-Kavach AI is an offline-first edge vision and multimodal agentic advisor 
 #### Acceptance Criteria
 
 1. WHEN Connectivity_State is available, THE Agent_Module SHALL accept Multimodal_Input including images, videos up to 30 seconds, and voice recordings
-2. WHEN processing Multimodal_Input, THE Agent_Module SHALL use Gemini 1.5 Flash for analysis and generate Advisory_Response within 10 seconds
-3. WHEN video input is provided, THE Agent_Module SHALL analyze key frames and audio to provide comprehensive disease assessment
+2. WHEN processing Multimodal_Input, THE Agent_Module SHALL use Gemini 1.5 Flash via Amazon Bedrock for analysis and generate Advisory_Response within 10 seconds
+3. WHEN video input is provided, THE Agent_Module SHALL store it in Amazon S3 and analyze key frames and audio to provide comprehensive disease assessment
 4. WHEN voice input is received, THE Agent_Module SHALL transcribe speech and extract agricultural context for advisory generation
 5. THE Agent_Module SHALL combine Edge_Module Detection_Result with Multimodal_Input for enhanced accuracy
 6. WHEN generating Advisory_Response, THE Agent_Module SHALL include treatment steps, preventive measures, and resource recommendations
@@ -148,8 +153,8 @@ Krishi-Kavach AI is an offline-first edge vision and multimodal agentic advisor 
 
 #### Acceptance Criteria
 
-1. WHEN Connectivity_State is available, THE System SHALL check for TFLite_Model updates from the server
-2. WHEN a new model version is available, THE System SHALL download and cache it in background without disrupting usage
+1. WHEN Connectivity_State is available, THE System SHALL check for TFLite_Model updates from Amazon S3
+2. WHEN a new model version is available, THE System SHALL download it from Amazon CloudFront and cache it in background without disrupting usage
 3. WHEN model update is complete, THE System SHALL switch to the new TFLite_Model seamlessly
 4. THE System SHALL maintain the previous model version until new model is verified functional
 5. WHEN model download fails, THE System SHALL retry with exponential backoff up to 3 attempts
@@ -162,11 +167,11 @@ Krishi-Kavach AI is an offline-first edge vision and multimodal agentic advisor 
 #### Acceptance Criteria
 
 1. WHEN processing images in Edge_Module, THE System SHALL not transmit any data outside the device
-2. WHEN Connectivity_State is available and user opts to use Agent_Module, THE System SHALL encrypt Multimodal_Input before transmission
-3. THE System SHALL request explicit user consent before sending any data to cloud services
+2. WHEN Connectivity_State is available and user opts to use Agent_Module, THE System SHALL encrypt Multimodal_Input before transmission to AWS
+3. THE System SHALL request explicit user consent before sending any data to AWS cloud services
 4. WHEN storing Detection_Result locally, THE System SHALL encrypt sensitive farm data
 5. THE System SHALL not collect or transmit user location data without explicit permission
-6. WHEN user deletes data, THE System SHALL remove all local copies and request cloud deletion
+6. WHEN user deletes data, THE System SHALL remove all local copies and request deletion from Amazon S3 and Amazon DynamoDB
 
 ### Requirement 12: Offline Advisory Cache
 
@@ -188,9 +193,9 @@ Krishi-Kavach AI is an offline-first edge vision and multimodal agentic advisor 
 #### Acceptance Criteria
 
 1. WHEN Detection_Result is generated, THE System SHALL log confidence scores and processing time locally
-2. WHEN Connectivity_State is available, THE System SHALL sync anonymous performance metrics to analytics service
+2. WHEN Connectivity_State is available, THE System SHALL sync anonymous performance metrics to Amazon CloudWatch
 3. THE System SHALL allow users to provide feedback on Detection_Result accuracy
-4. WHEN user marks Detection_Result as incorrect, THE System SHALL collect corrected labels for model improvement
+4. WHEN user marks Detection_Result as incorrect, THE System SHALL collect corrected labels and store in Amazon S3 for model improvement
 5. THE System SHALL track feature usage patterns to identify most valuable capabilities
 6. WHEN collecting feedback, THE System SHALL not transmit personally identifiable information
 
@@ -219,3 +224,20 @@ Krishi-Kavach AI is an offline-first edge vision and multimodal agentic advisor 
 4. WHEN multiple interactions occur, THE Agent_Module SHALL maintain conversation context for follow-up questions
 5. THE Agent_Module SHALL provide reasoning for recommendations to build farmer trust
 6. WHEN suggesting treatments, THE Agent_Module SHALL consider locally available resources and affordability
+
+### Requirement 16: AWS Serverless Architecture
+
+**User Story:** As a system architect, I want to leverage AWS serverless services for the cloud tier, so that the system can scale automatically, minimize operational overhead, and optimize costs for serving rural farmers.
+
+#### Acceptance Criteria
+
+1. THE Agent_Module SHALL be implemented as AWS Lambda functions with automatic scaling
+2. WHEN user requests advisory, THE System SHALL invoke Lambda via Amazon API Gateway
+3. THE System SHALL store all user images and videos in Amazon S3 with lifecycle policies
+4. THE System SHALL use Amazon DynamoDB for storing user sessions and farm context data
+5. THE System SHALL use Amazon CloudFront for distributing static assets and TFLite models globally
+6. THE System SHALL log all operations to Amazon CloudWatch for monitoring and debugging
+7. WHEN Lambda function is invoked, IT SHALL complete processing within 30 seconds timeout
+8. THE System SHALL use AWS IAM roles for secure service-to-service authentication
+9. THE System SHALL implement AWS WAF rules to protect API Gateway from malicious requests
+10. THE System SHALL use Amazon Route 53 for DNS management and health checks

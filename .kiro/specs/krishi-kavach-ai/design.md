@@ -14,11 +14,13 @@ The system follows a "graceful degradation" principle where core functionality (
 
 2. **TensorFlow Lite Models**: Selected for their optimization for mobile/edge devices, small model size (< 10MB), and proven performance on low-end hardware.
 
-3. **Gemini 1.5 Flash**: Chosen for its multimodal capabilities (image + video + text), cost-effectiveness, and fast inference times suitable for 2G/3G networks.
+3. **Gemini 1.5 Flash via Amazon Bedrock**: Chosen for its multimodal capabilities (image + video + text), cost-effectiveness, and fast inference times suitable for 2G/3G networks. Accessed through Amazon Bedrock for seamless AWS integration.
 
 4. **Bhashini Integration**: Government-backed service ensuring long-term sustainability and comprehensive coverage of Indian languages and dialects.
 
 5. **Progressive Web App**: Eliminates app store friction, reduces storage footprint, and enables instant updates without user intervention.
+
+6. **AWS Serverless Architecture**: Leverages AWS Lambda for compute, Amazon S3 for storage, Amazon API Gateway for API management, and Amazon DynamoDB for session management, ensuring scalability and cost-efficiency.
 
 ## Architecture
 
@@ -49,25 +51,27 @@ graph TB
         Queue --> Sync
     end
     
-    subgraph "Cloud Services (Tier 2)"
-        API[API Gateway]
-        Agent[Bhasha-Kisan Agent]
-        Gemini[Gemini 1.5 Flash]
+    subgraph "AWS Cloud Services (Tier 2)"
+        APIGW[Amazon API Gateway]
+        Lambda[AWS Lambda - Bhasha-Kisan Agent]
+        Bedrock[Amazon Bedrock - Gemini 1.5 Flash]
         Bhashini[Bhashini Service]
-        Storage[Cloud Storage]
-        Analytics[Analytics Service]
+        S3[Amazon S3 - Image Storage]
+        DynamoDB[Amazon DynamoDB - Sessions]
+        CloudWatch[Amazon CloudWatch - Analytics]
         
-        Sync --> API
-        API --> Agent
-        Agent --> Gemini
-        Agent --> Bhashini
-        Agent --> Storage
-        API --> Analytics
+        Sync --> APIGW
+        APIGW --> Lambda
+        Lambda --> Bedrock
+        Lambda --> Bhashini
+        Lambda --> S3
+        Lambda --> DynamoDB
+        Lambda --> CloudWatch
     end
     
     Cache -.->|Offline Advisory| UI
     TFLite -.->|Detection Result| UI
-    Agent -.->|Advisory Response| Sync
+    Lambda -.->|Advisory Response| Sync
 ```
 
 ### Tiered Intelligence System
@@ -82,7 +86,10 @@ graph TB
 
 **Tier 2 - Cloud/Agentic (Bhasha-Kisan)**
 - Activates when network available (even 2G)
-- Gemini 1.5 Flash for multimodal analysis
+- Gemini 1.5 Flash via Amazon Bedrock for multimodal analysis
+- AWS Lambda for serverless compute
+- Amazon S3 for image/video storage
+- Amazon DynamoDB for session management
 - Bhashini for multilingual support
 - Response time: < 10 seconds (2G), < 5 seconds (4G)
 - Handles: Detailed advisory, treatment recommendations, contextual guidance
@@ -102,11 +109,14 @@ graph TB
 2. Connectivity Manager checks network state
 3. If online: multimodal input (image/video/voice) prepared
 4. Data compressed and encrypted
-5. Sent to API Gateway with user context
-6. Bhasha-Kisan Agent processes with Gemini 1.5 Flash
-7. Response translated via Bhashini to user's dialect
-8. Advisory delivered and cached locally
-9. If offline: request queued for later sync
+5. Sent to Amazon API Gateway with user context
+6. AWS Lambda (Bhasha-Kisan Agent) processes request
+7. Lambda invokes Gemini 1.5 Flash via Amazon Bedrock for analysis
+8. Lambda stores images/videos in Amazon S3
+9. Lambda saves session context in Amazon DynamoDB
+10. Response translated via Bhashini to user's dialect
+11. Advisory delivered and cached locally
+12. If offline: request queued for later sync
 
 ## Components and Interfaces
 
@@ -213,20 +223,23 @@ interface CloudRequest {
 }
 ```
 
-### 4. Bhasha-Kisan Agent Module
+### 4. Bhasha-Kisan Agent Module (AWS Lambda)
 
 **Responsibilities:**
 - Orchestrate multimodal AI analysis
-- Integrate with Gemini 1.5 Flash
+- Integrate with Gemini 1.5 Flash via Amazon Bedrock
 - Coordinate with Bhashini for translation
 - Generate contextual agricultural advisory
-- Maintain conversation context
+- Maintain conversation context in Amazon DynamoDB
+- Store media files in Amazon S3
 
 **Key Technologies:**
-- Gemini 1.5 Flash API
+- AWS Lambda (Python 3.11 runtime)
+- Amazon Bedrock (Gemini 1.5 Flash model)
 - Bhashini API
-- Node.js/Python backend
-- Redis for session management
+- Amazon S3 for media storage
+- Amazon DynamoDB for session management
+- Amazon CloudWatch for logging and monitoring
 
 **Interface:**
 ```typescript
@@ -288,13 +301,19 @@ interface Resource {
 }
 ```
 
-### 5. Model Management Service
+### 5. Model Management Service (AWS Lambda + S3)
 
 **Responsibilities:**
-- Serve TensorFlow Lite models
+- Serve TensorFlow Lite models from Amazon S3
 - Handle model versioning
 - Provide incremental updates
-- Track model performance metrics
+- Track model performance metrics in Amazon CloudWatch
+
+**Key Technologies:**
+- AWS Lambda for API endpoints
+- Amazon S3 for model storage
+- Amazon CloudFront for CDN distribution
+- Amazon DynamoDB for version tracking
 
 **Interface:**
 ```typescript
@@ -508,7 +527,7 @@ interface AdvisoryResponse {
   audioUrl?: string;
   
   // Metadata
-  generatedBy: 'gemini-1.5-flash';
+  generatedBy: 'gemini-1.5-flash-via-bedrock';
   processingTime: number;
   
   // Caching
@@ -928,10 +947,16 @@ After analyzing all acceptance criteria, I've identified several areas where pro
 
 ### Agent Module Errors
 
-**API Failures:**
-- If Gemini API returns error, parse error message and display user-friendly version
+**Amazon Bedrock API Failures:**
+- If Bedrock API returns error, parse error message and display user-friendly version
 - If rate limit exceeded, queue request and retry after cooldown period
 - If API unavailable, fall back to cached responses if available
+- Log all Bedrock errors to Amazon CloudWatch for monitoring
+
+**AWS Lambda Errors:**
+- If Lambda timeout (30 seconds), notify user and queue for retry
+- If Lambda memory exceeded, log to CloudWatch and optimize payload
+- If cold start delays response, implement Lambda warming strategy
 
 **Translation Errors:**
 - If Bhashini service fails, display original English text with error notice
@@ -1083,10 +1108,13 @@ Each property test must include a comment tag referencing the design document:
 - Use network throttling tools for bandwidth testing
 
 **Agent Module Testing:**
-- Mock Gemini API responses for unit tests
-- Use test API keys for integration tests with rate limiting
+- Mock Amazon Bedrock responses for unit tests
+- Use test AWS credentials with limited permissions for integration tests
 - Mock Bhashini service for translation tests
 - Test with sample multilingual content
+- Test Lambda function locally using AWS SAM
+- Verify S3 upload/download operations
+- Test DynamoDB session management
 
 **Storage Testing:**
 - Mock IndexedDB for unit tests
@@ -1194,77 +1222,94 @@ Each property test must include a comment tag referencing the design document:
 ### Progressive Web App Deployment
 
 **Hosting:**
-- Static assets served via CDN (CloudFront, Cloudflare)
+- Static assets served via Amazon CloudFront CDN
+- PWA hosted on Amazon S3 with static website hosting
 - Service worker and manifest files at root domain
-- HTTPS required for PWA features
+- HTTPS required for PWA features (AWS Certificate Manager)
+- Amazon Route 53 for DNS management
 
 **Caching Strategy:**
 - App shell: Cache-first with background update
-- Models: Cache-first with versioned URLs
+- Models: Cache-first with versioned URLs from CloudFront
 - API responses: Network-first with cache fallback
 - Images: Cache-first for user captures
 
 ### Model Deployment
 
 **Model Serving:**
-- TFLite models hosted on CDN with versioning
+- TFLite models hosted on Amazon S3 with versioning
+- Distributed globally via Amazon CloudFront
 - Incremental updates using differential downloads
 - Checksum verification before installation
 - Rollback capability for failed updates
 
 **Model Versioning:**
 - Semantic versioning (major.minor.patch)
+- Version metadata stored in Amazon DynamoDB
 - Backward compatibility for minor versions
 - Migration scripts for major versions
-- A/B testing for model improvements
+- A/B testing using AWS Lambda@Edge
 
 ### API Deployment
 
-**Backend Services:**
-- Containerized deployment (Docker/Kubernetes)
-- Auto-scaling based on request volume
-- Regional deployment for latency optimization
-- Rate limiting per user/IP
+**AWS Serverless Backend:**
+- AWS Lambda functions for all backend logic
+- Amazon API Gateway for REST API endpoints
+- Auto-scaling handled automatically by AWS
+- Regional deployment using AWS Regions (ap-south-1 for India)
+- Rate limiting via API Gateway usage plans
+- AWS WAF for security and DDoS protection
 
 **External Services:**
-- Gemini API: Production API keys with quotas
+- Amazon Bedrock: Gemini 1.5 Flash model with quotas
 - Bhashini: Government API with SLA
-- Analytics: Privacy-compliant service (Plausible/Matomo)
+- Amazon CloudWatch: Monitoring and analytics
+- Amazon S3: Image and video storage with lifecycle policies
 
 ### Monitoring and Observability
 
-**Metrics:**
+**AWS CloudWatch Metrics:**
 - Inference latency (P50, P95, P99)
-- API response times
+- API response times via API Gateway metrics
+- Lambda function duration and errors
+- Bedrock API latency and token usage
 - Error rates by type
 - User engagement metrics
 - Data usage per session
+- S3 storage usage and costs
 
 **Logging:**
-- Structured logging (JSON format)
+- Structured logging (JSON format) to CloudWatch Logs
 - Log levels: ERROR, WARN, INFO, DEBUG
 - PII scrubbing in logs
-- Centralized log aggregation
+- Centralized log aggregation via CloudWatch Logs Insights
+- Lambda function logs automatically captured
 
 **Alerting:**
-- High error rates (>5%)
-- API failures
-- Model loading failures
-- Storage quota issues
-- Security incidents
+- Amazon CloudWatch Alarms for:
+  - High error rates (>5%)
+  - Bedrock API failures
+  - Lambda function errors
+  - Model loading failures
+  - S3 storage quota issues
+  - Security incidents via AWS Security Hub
+- Amazon SNS for alert notifications
 
 ### Scalability Considerations
 
 **Edge Scaling:**
-- CDN for global asset distribution
+- Amazon CloudFront for global asset distribution
 - Service worker handles offline scaling
 - No backend required for core detection
 
-**Cloud Scaling:**
-- Horizontal scaling for API servers
-- Queue-based processing for advisory requests
-- Caching layer (Redis) for frequent queries
-- Database sharding by region
+**AWS Cloud Scaling:**
+- AWS Lambda auto-scales horizontally (up to 1000 concurrent executions)
+- Amazon API Gateway handles millions of requests
+- Amazon S3 scales automatically for storage
+- Amazon DynamoDB auto-scaling for session data
+- Amazon SQS for queue-based advisory request processing
+- Amazon ElastiCache (Redis) for caching frequent queries
+- Multi-region deployment for global reach
 
 ### Hackathon-Specific Considerations
 
@@ -1272,21 +1317,36 @@ Each property test must include a comment tag referencing the design document:
 - Pre-loaded sample images for quick demos
 - Offline mode demonstration
 - Multilingual showcase (3-4 languages)
-- Performance metrics dashboard
+- Performance metrics dashboard via CloudWatch
+- AWS architecture diagram highlighting services used
 
 **Judging Criteria Alignment:**
-- Innovation: Hybrid-compute architecture
+- Innovation: Hybrid-compute architecture with edge + AWS cloud
 - Impact: Offline-first for rural connectivity
-- Technical Excellence: WebAssembly + AI agents
-- Scalability: PWA architecture
+- Technical Excellence: WebAssembly + Amazon Bedrock + AWS Lambda
+- Scalability: Serverless AWS architecture (Lambda, S3, DynamoDB)
 - Social Good: Farmer empowerment
+- AWS Integration: Comprehensive use of AWS services (Bedrock, Lambda, S3, DynamoDB, API Gateway, CloudFront, CloudWatch)
+
+**AWS Services Showcase:**
+- Amazon Bedrock for AI inference
+- AWS Lambda for serverless compute
+- Amazon S3 for storage
+- Amazon DynamoDB for NoSQL database
+- Amazon API Gateway for API management
+- Amazon CloudFront for CDN
+- Amazon CloudWatch for monitoring
+- AWS Certificate Manager for HTTPS
+- Amazon Route 53 for DNS
+- AWS WAF for security
 
 **Presentation Assets:**
-- Architecture diagrams
+- AWS architecture diagrams
 - Live demo script
 - Performance benchmarks
+- Cost analysis (AWS pricing)
 - User testimonials (if available)
-- Future roadmap
+- Future roadmap with additional AWS services
 
 ## Future Enhancements
 
@@ -1314,3 +1374,68 @@ Each property test must include a comment tag referencing the design document:
 - Veterinary service connections
 - Input supplier marketplace
 - Crop insurance integration
+
+
+## AWS Cost Optimization
+
+### Cost-Effective Architecture
+
+**AWS Lambda:**
+- Pay-per-request pricing (no idle costs)
+- 1M free requests per month
+- Estimated cost: $0.20 per 1M requests after free tier
+- Average request: 512MB memory, 5 seconds duration
+- Monthly cost for 100K users: ~$50-100
+
+**Amazon Bedrock (Gemini 1.5 Flash):**
+- Pay-per-token pricing
+- Input: $0.075 per 1M tokens
+- Output: $0.30 per 1M tokens
+- Average advisory: 1000 input tokens, 500 output tokens
+- Monthly cost for 100K advisories: ~$90
+
+**Amazon S3:**
+- Standard storage: $0.023 per GB/month
+- Average image: 500KB, video: 5MB
+- 100K users, 10 images each = 500GB
+- Monthly storage cost: ~$12
+- Data transfer: First 100GB free, then $0.09/GB
+
+**Amazon DynamoDB:**
+- On-demand pricing (no capacity planning)
+- $1.25 per million write requests
+- $0.25 per million read requests
+- 100K users, 50 operations each
+- Monthly cost: ~$10
+
+**Amazon CloudFront:**
+- First 1TB free per month (AWS Free Tier for 12 months)
+- $0.085 per GB after free tier
+- Model distribution: 10MB model × 100K downloads = 1TB
+- Monthly cost: ~$0 (within free tier)
+
+**Amazon API Gateway:**
+- $3.50 per million requests
+- 100K users, 50 requests each = 5M requests
+- Monthly cost: ~$17.50
+
+**Amazon CloudWatch:**
+- First 10 custom metrics free
+- Logs: $0.50 per GB ingested
+- Estimated 50GB logs/month
+- Monthly cost: ~$25
+
+**Total Estimated Monthly Cost:**
+- For 100K active users: ~$200-250/month
+- Cost per user: ~$0.002-0.0025
+- Highly scalable with pay-as-you-go pricing
+
+### Cost Optimization Strategies
+
+1. **Caching:** Use CloudFront and local caching to reduce Bedrock API calls
+2. **Batch Processing:** Process multiple images in single Lambda invocation
+3. **S3 Lifecycle Policies:** Move old images to S3 Glacier after 90 days
+4. **DynamoDB TTL:** Auto-delete old session data
+5. **Lambda Memory Optimization:** Right-size Lambda memory for cost/performance
+6. **Reserved Capacity:** Consider Savings Plans for predictable workloads
+7. **Edge Optimization:** Maximize offline functionality to minimize cloud costs
